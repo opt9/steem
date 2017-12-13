@@ -591,17 +591,8 @@ void database_fixture::validate_database( void )
 
 #ifdef STEEM_ENABLE_SMT
 
-smt_database_fixture::smt_database_fixture()
-{
-
-}
-
-smt_database_fixture::~smt_database_fixture()
-{
-
-}
-
-asset_symbol_type smt_database_fixture::create_smt( signed_transaction& tx, const string& account_name, const fc::ecc::private_key& key,
+template< typename T >
+asset_symbol_type t_smt_database_fixture< T >::create_smt( signed_transaction& tx, const string& account_name, const fc::ecc::private_key& key,
    uint8_t token_decimal_places )
 {
    smt_create_operation op;
@@ -614,7 +605,7 @@ asset_symbol_type smt_database_fixture::create_smt( signed_transaction& tx, cons
       convert( account_name, ASSET( "5000.000 TESTS" ) );
 
       // The list of available nais is not dependent on SMT desired precision (token_decimal_places).
-      auto available_nais =  db->get_smt_next_identifier();
+      auto available_nais =  this->db->get_smt_next_identifier();
       FC_ASSERT( available_nais.size() > 0, "No available nai returned by get_smt_next_identifier." );
       const asset_symbol_type& new_nai = available_nais[0];
       // Note that token's precision is needed now, when creating actual symbol.
@@ -624,17 +615,18 @@ asset_symbol_type smt_database_fixture::create_smt( signed_transaction& tx, cons
       op.control_account = account_name;
 
       tx.operations.push_back( op );
-      tx.set_expiration( db->head_block_time() + STEEM_MAX_TIME_UNTIL_EXPIRATION );
-      tx.sign( key, db->get_chain_id() );
+      tx.set_expiration( this->db->head_block_time() + STEEM_MAX_TIME_UNTIL_EXPIRATION );
+      tx.sign( key, this->db->get_chain_id() );
 
-      db->push_transaction( tx, 0 );
+      this->db->push_transaction( tx, 0 );
    }
    FC_LOG_AND_RETHROW();
 
    return op.symbol;
 }
 
-void smt_database_fixture::transfer_smt(
+template< typename T >
+void t_smt_database_fixture< T >::transfer_smt(
    const string& from,
    const string& to,
    const asset& amount )
@@ -648,11 +640,11 @@ void smt_database_fixture::transfer_smt(
       op.to = to;
       op.amount = amount;
 
-      trx.operations.push_back( op );
-      trx.set_expiration( db->head_block_time() + STEEM_MAX_TIME_UNTIL_EXPIRATION );
-      trx.validate();
-      db->push_transaction( trx, ~0 );
-      trx.operations.clear();
+      this->trx.operations.push_back( op );
+      this->trx.set_expiration( this->db->head_block_time() + STEEM_MAX_TIME_UNTIL_EXPIRATION );
+      this->trx.validate();
+      this->db->push_transaction( this->trx, ~0 );
+      this->trx.operations.clear();
    } FC_CAPTURE_AND_RETHROW( (from)(to)(amount) )
 }
 
@@ -675,7 +667,8 @@ void set_create_op(smt_create_operation* op, account_name_type control_account, 
    sub_set_create_op(op, control_account);
 }
 
-void smt_database_fixture::create_smt_3( const char* control_account_name, const fc::ecc::private_key& key,
+template< typename T >
+void t_smt_database_fixture< T >::create_smt_3( const char* control_account_name, const fc::ecc::private_key& key,
    smt_database_fixture::TFollowUpOps followUpOps )
 {
    smt_create_operation op0;
@@ -699,9 +692,9 @@ void smt_database_fixture::create_smt_3( const char* control_account_name, const
       tx.operations.push_back( op0 );
       tx.operations.push_back( op1 );
       tx.operations.push_back( op2 );
-      tx.set_expiration( db->head_block_time() + STEEM_MAX_TIME_UNTIL_EXPIRATION );
-      tx.sign( key, db->get_chain_id() );
-      db->push_transaction( tx, 0 );
+      tx.set_expiration( this->db->head_block_time() + STEEM_MAX_TIME_UNTIL_EXPIRATION );
+      tx.sign( key, this->db->get_chain_id() );
+      this->db->push_transaction( tx, 0 );
 
       followUpOps(op0.symbol, op1.symbol, op2.symbol);
    }
@@ -717,25 +710,37 @@ void push_invalid_operation(const operation& invalid_op, const fc::ecc::private_
    STEEM_REQUIRE_THROW( db->push_transaction( tx, database::skip_transaction_dupe_check ), fc::assert_exception );
 }
 
-void smt_database_fixture::create_invalid_smt( const char* control_account_name, const fc::ecc::private_key& key )
+template< typename T >
+void t_smt_database_fixture< T >::create_invalid_smt( const char* control_account_name, const fc::ecc::private_key& key )
 {
    // Fail due to precision too big.
    smt_create_operation op_precision;
    STEEM_REQUIRE_THROW( set_create_op(&op_precision, control_account_name, "smt", STEEM_ASSET_MAX_DECIMALS + 1), fc::assert_exception );
 }
 
-void smt_database_fixture::create_conflicting_smt( const asset_symbol_type existing_smt, const char* control_account_name,
+template< typename T >
+void t_smt_database_fixture< T >::create_conflicting_smt( const asset_symbol_type existing_smt, const char* control_account_name,
    const fc::ecc::private_key& key )
 {
    // Fail due to the same nai & precision.
    smt_create_operation op_same;
-   set_create_op(&op_same, control_account_name, existing_smt.to_nai(), existing_smt.decimals());
-   push_invalid_operation(op_same, key, db);
+   set_create_op( &op_same, control_account_name, existing_smt.to_nai(), existing_smt.decimals() );
+   push_invalid_operation( op_same, key, this->db );
    // Fail due to the same nai (though different precision).
    smt_create_operation op_same_nai;
-   set_create_op(&op_same_nai, control_account_name, existing_smt.to_nai(), existing_smt.decimals() == 0 ? 1 : 0);
-   push_invalid_operation(op_same_nai, key, db);
+   set_create_op( &op_same_nai, control_account_name, existing_smt.to_nai(), existing_smt.decimals() == 0 ? 1 : 0 );
+   push_invalid_operation (op_same_nai, key, this->db );
 }
+
+template asset_symbol_type t_smt_database_fixture< clean_database_fixture >::create_smt( signed_transaction& tx, const string& account_name, const fc::ecc::private_key& key, uint8_t token_decimal_places );
+template void t_smt_database_fixture< clean_database_fixture >::transfer_smt( const string& from, const string& to, const asset& amount );
+
+template asset_symbol_type t_smt_database_fixture< database_fixture >::create_smt( signed_transaction& tx, const string& account_name, const fc::ecc::private_key& key, uint8_t token_decimal_places );
+template void t_smt_database_fixture< database_fixture >::transfer_smt( const string& from, const string& to, const asset& amount );
+
+template void t_smt_database_fixture< clean_database_fixture >::create_invalid_smt( const char* control_account_name, const fc::ecc::private_key& key );
+template void t_smt_database_fixture< clean_database_fixture >::create_conflicting_smt( const asset_symbol_type existing_smt, const char* control_account_name, const fc::ecc::private_key& key );
+template void t_smt_database_fixture< clean_database_fixture >::create_smt_3( const char* control_account_name, const fc::ecc::private_key& key, smt_database_fixture::TFollowUpOps followUpOps );
 
 #endif
 
