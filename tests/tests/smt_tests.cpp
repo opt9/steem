@@ -606,10 +606,8 @@ BOOST_AUTO_TEST_CASE( smt_transfer_apply )
       asset_symbol_type bob_symbol = create_smt(ty, "bob", bob_private_key, 1);
 
       // Give some SMT to creators.
-      const account_object& alice_account = db->get_account("alice");
-      db->adjust_balance(alice_account, asset(100, alice_symbol));
-      const account_object& bob_account = db->get_account("bob");
-      db->adjust_balance(bob_account, asset(110, bob_symbol));
+      db->adjust_balance("alice", asset(100, alice_symbol));
+      db->adjust_balance("bob", asset(110, bob_symbol));
 
       // Check pre-tranfer amounts.
       FC_ASSERT( db->get_balance( "alice", alice_symbol ).amount == 100, "SMT balance adjusting error" );
